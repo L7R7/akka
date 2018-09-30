@@ -178,6 +178,18 @@ abstract class ClusterSharding {
   def start[M, E](shardedEntity: ShardedEntity[M, E]): ActorRef[E]
 
   /**
+   * Initialize sharding for the given `shardedPersistentEntity` factory settings.
+   *
+   * It will start a shard region or a proxy depending on if the settings require role and if this node has
+   * such a role.
+   *
+   * @tparam M The type of message the entity accepts
+   * @tparam E A possible envelope around the message the entity accepts
+   */
+  def start[M, E](shardedPersistentEntity: ShardedPersistentEntity2[M, E]): ActorRef[E] =
+    start(shardedPersistentEntity.toShardedEntity)
+
+  /**
    * Create an `ActorRef`-like reference to a specific sharded entity.
    * Currently you have to correctly specify the type of messages the target can handle.
    *
