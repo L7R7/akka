@@ -6,6 +6,7 @@ package akka.persistence.typed.javadsl
 
 import java.util.function.BiFunction
 import java.util.function.Predicate
+import java.util.function.{Function => JFunction}
 
 import akka.annotation.InternalApi
 import akka.persistence.typed.internal._
@@ -74,9 +75,38 @@ final class CommandHandlerBuilder[Command, Event, S <: State, State] @InternalAp
     this
   }
 
+  /**
+   * Match any command which the given `predicate` returns true for.
+   *
+   * Use this when then `State` is not needed in the `handler`, otherwise there is an overloaded method that pass
+   * the state in a `BiFunction`.
+   */
+  def matchCommand(predicate: Predicate[Command], handler: JFunction[Command, Effect[Event, State]]): CommandHandlerBuilder[Command, Event, S, State] = {
+    addCase(cmd ⇒ predicate.test(cmd), new BiFunction[S, Command, Effect[Event, State]] {
+      override def apply(state: S, cmd: Command): Effect[Event, State] = handler(cmd)
+    })
+    this
+  }
+
+  /**
+   * Match commands that are of the given `commandClass` or subclass thereof
+   */
   def matchCommand[C <: Command](commandClass: Class[C], handler: BiFunction[S, C, Effect[Event, State]]): CommandHandlerBuilder[Command, Event, S, State] = {
     addCase(cmd ⇒ commandClass.isAssignableFrom(cmd.getClass), handler.asInstanceOf[BiFunction[S, Command, Effect[Event, State]]])
     this
+  }
+
+  /**
+   * Match commands that are of the given `commandClass` or subclass thereof.
+   *
+   * Use this when then `State` is not needed in the `handler`, otherwise there is an overloaded method that pass
+   * the state in a `BiFunction`.
+   */
+  def matchCommand[C <: Command](commandClass: Class[C], handler: JFunction[C, Effect[Event, State]]): CommandHandlerBuilder[Command, Event, S, State] = {
+    // FIXME make sure the internals can handle null State, e.g. not store null snapshot
+    matchCommand[C](commandClass, new BiFunction[S, C, Effect[Event, State]] {
+      override def apply(state: S, cmd: C): Effect[Event, State] = handler(cmd)
+    })
   }
 
   /**
