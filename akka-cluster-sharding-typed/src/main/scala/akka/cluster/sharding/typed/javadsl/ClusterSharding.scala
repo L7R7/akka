@@ -243,6 +243,58 @@ object ShardedEntity {
     typeKey:        EntityTypeKey[M],
     stopMessage:    M): ShardedEntity[M, ShardingEnvelope[M]] =
     new ShardedEntity(createBehavior, typeKey, stopMessage, Props.empty, Optional.empty(), Optional.empty(), Optional.empty())
+
+  // FIXME remove above create in favor of below `of`
+
+  /**
+   * Defines how the entity should be created. Used in [[ClusterSharding#start]]. More optional
+   * settings can be defined using the `with` methods of the returned [[ShardedEntity]].
+   *
+   * @param createBehavior Create the behavior for an entity given an entityId
+   * @param typeKey A key that uniquely identifies the type of entity in this cluster
+   * @param stopMessage Message sent to an entity to tell it to stop, e.g. when rebalanced or passivated.
+   *
+   * @tparam M The type of message the entity accepts
+   */
+  def of[M](
+    createBehavior: JFunction[String, Behavior[M]],
+    typeKey:        EntityTypeKey[M],
+    stopMessage:    M): ShardedEntity[M, ShardingEnvelope[M]] = {
+    create(new BiFunction[ActorRef[ClusterSharding.ShardCommand], String, Behavior[M]] {
+      override def apply(shard: ActorRef[ClusterSharding.ShardCommand], entityId: String): Behavior[M] =
+        createBehavior.apply(entityId)
+    }, typeKey, stopMessage)
+  }
+
+  /**
+   * Defines how the [[PersistentEntity2]] should be created. Used in [[ClusterSharding#start]]. More optional
+   * settings can be defined using the with` methods of the returned [[ShardedEntity]].
+   *
+   * @param createBehavior Create the behavior for an entity given an entityId
+   * @param typeKey A key that uniquely identifies the type of entity in this cluster
+   * @param stopMessage Message sent to an entity to tell it to stop, e.g. when rebalanced or passivated.
+   *
+   * @tparam Command The type of message the entity accepts
+   */
+  def ofPersistentEntity[Command, Event, State >: Null](
+    createPersistentEntity: JFunction[String, PersistentEntity2[Command, Event, State]],
+    typeKey:                EntityTypeKey[Command],
+    stopMessage:            Command): ShardedEntity[Command, ShardingEnvelope[Command]] = {
+
+    create(new BiFunction[ActorRef[ClusterSharding.ShardCommand], String, Behavior[Command]] {
+      override def apply(shard: ActorRef[ClusterSharding.ShardCommand], entityId: String): Behavior[Command] = {
+        val PersistentEntity2 = createPersistentEntity(entityId)
+        if (PersistentEntity2.typeKey != typeKey)
+          throw new IllegalArgumentException(s"The [${PersistentEntity2.typeKey}] of the PersistentEntity2 " +
+            s" [${PersistentEntity2.getClass.getName}] doesn't match expected $typeKey.")
+        PersistentEntity2
+      }
+    }, typeKey, stopMessage)
+  }
+
+  // FIXME those createPersistentEntity factory functions would also need ActorContext parameter, probably better to
+  // have only one with a PersistentEntityContext parameter, that holds ActorContext, entityId, ActorRef[ClusterSharding.ShardCommand]
+
 }
 
 /**
